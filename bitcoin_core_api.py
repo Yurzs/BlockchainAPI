@@ -12,7 +12,7 @@ class BitcoinCoreApi(object):
     username = ''
     password = ''
     host = 'localhost'
-    port = '8332'
+    port = 8332
 
     def full_path(self):
         """
@@ -20,10 +20,10 @@ class BitcoinCoreApi(object):
         :return: full url to RPC server
         """
         return '{schema}{username}:{password}@{host}:{port}'.format(schema=self.schema,
-                                                                     username=self.username,
-                                                                     password=self.password,
-                                                                     host=self.host,
-                                                                     port=self.port)
+                                                                    username=self.username,
+                                                                    password=self.password,
+                                                                    host=self.host,
+                                                                    port=self.port)
 
 
     def connect(self,*args,**kwargs):
@@ -420,61 +420,83 @@ class Wallet(BitcoinCoreApi):
         return self.conn_properties.connect (self.conn_properties, method=method,
                                              params=[outputs,unlock], id=request_id)
 
-    def remove_pruned_funds(self,):
+    def remove_pruned_funds(self,txid:str,request_id:str) -> None:
         method = 'removeprunedfunds'
         return self.conn_properties.connect (self.conn_properties, method=method,
-                                             params=[outputs, unlock], id=request_id)
+                                             params=[txid], id=request_id)
 
-    def send_many(self):
-        method = ''
+    def send_many(self,from_account:str,to_accounts:{'account':'amount'},comment:str,
+                  fee:['adress'],request_id:str,min_confirmations:int=5) -> str:
+        method = 'sendmany'
+        return self.conn_properties.connect (self.conn_properties, method=method,
+                                             params=[from_account,to_accounts,min_confirmations,comment,fee], id=request_id)
 
-    def send_to_address(self):
-        method = ''
+    def send_to_address(self,to_adress:str,amount:float,comment:str,
+                        comment_about_whom:str,fee:bool,txid:str,request_id:str) -> str:
+        method = 'sendtoaddress'
+        return self.conn_properties.connect (self.conn_properties, method=method,
+                                             params=[to_adress,amount,comment,comment_about_whom,fee,txid], id=request_id)
 
-    def set_tx_fee(self):
-        method = ''
+    def set_tx_fee(self,fee_per_kilobyte:float,request_id:str) -> bool:
+        method = 'settxfee'
+        return self.conn_properties.connect (self.conn_properties, method=method,
+                                             params=[fee_per_kilobyte], id=request_id)
 
-    def sign_message(self):
-        method = ''
+    def sign_message(self,address:str,message:str,request_id:str) -> str:
+        method = 'signmessage'
+        return self.conn_properties.connect (self.conn_properties, method=method,
+                                             params=[address,message], id=request_id)
 
-    def sign_message_with_priv_key(self):
-        method = ''
+    def sign_message_with_priv_key(self,priv_key:str,message:str,request_id:str) -> str:
+        method = 'signmessagewithprivkey'
+        return self.conn_properties.connect (self.conn_properties, method=method,
+                                             params=[priv_key, message], id=request_id)
 
-    def wallet_lock(self):
-        method = ''
+    def wallet_lock(self,request_id:str):
+        method = 'walletlock'
+        return self.conn_properties.connect (self.conn_properties, method=method,
+                                             params=[], id=request_id)
 
-    def wallet_passphrase(self):
-        method = ''
+    def wallet_passphrase(self,passphrase:str,seconds_unlocked:int,request_id:str) -> None:
+        method = 'walletpassphrase'
+        return self.conn_properties.connect (self.conn_properties, method=method,
+                                             params=[passphrase,seconds_unlocked], id=request_id)
 
-    def wallet_passphrase_change(self):
-        method = ''
+    def wallet_passphrase_change(self,current_passphrase:str,new_passphrase:str,request_id:str):
+        method = 'walletpassphrasechange'
+        return self.conn_properties.connect (self.conn_properties, method=method,
+                                             params=[current_passphrase,new_passphrase], id=request_id)
+
+class Config:
+    """
+    Creating rpcuser for bitcoin.conf
+    """
+    def generate_salt(self=None):
+        # This uses os.urandom() underneath
+        cryptogen = SystemRandom()
+
+        # Create 16 byte hex salt
+        salt_sequence = [cryptogen.randrange(256) for _ in range(16)]
+        return ''.join([format(r, 'x') for r in salt_sequence])
+
+    def generate_password(self=None):
+        """Create 32 byte b64 password"""
+        return base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8')
+
+    def password_to_hmac(self=None,*args, **kwargs):
+        m = hmac.new(bytearray(kwargs.get('salt'), 'utf-8'), bytearray(kwargs.get('password'), 'utf-8'), 'SHA256')
+        return m.hexdigest()
 
 
+    def main(self,*args,**kwargs):
+        salt = self.generate_salt()
+        if not kwargs.get('password',False):
+            password = self.generate_password()
+        else:
+            password = kwargs.get('password')
+        password_hmac = self.password_to_hmac(salt=salt, password=password)
 
-def generate_salt():
-    # This uses os.urandom() underneath
-    cryptogen = SystemRandom()
-
-    # Create 16 byte hex salt
-    salt_sequence = [cryptogen.randrange(256) for _ in range(16)]
-    return ''.join([format(r, 'x') for r in salt_sequence])
-
-def generate_password():
-    """Create 32 byte b64 password"""
-    return base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8')
-
-def password_to_hmac(salt, password):
-    m = hmac.new(bytearray(salt, 'utf-8'), bytearray(password, 'utf-8'), 'SHA256')
-    return m.hexdigest()
-
-
-def main(username,password=None):
-    salt = generate_salt()
-    if not password:
-        password = generate_password()
-    password_hmac = password_to_hmac(salt, password)
-
-    print('String to be appended to bitcoin.conf:')
-    print('rpcauth={0}:{1}${2}'.format(username, salt, password_hmac))
-    print('Your password:\n{0}'.format(password))
+        print('String to be appended to bitcoin.conf:')
+        print('rpcauth={0}:{1}${2}'.format(kwargs.get('username'), salt, password_hmac))
+        print('Your password:\n{0}'.format(password))
 
